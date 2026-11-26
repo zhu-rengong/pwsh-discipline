@@ -1,0 +1,8 @@
+# The system git config sets core.autocrlf=true on this machine. Everything here is
+# plain text consumed by the DSH loader and by PowerShell, so it stays LF in both the
+# working tree and the repository regardless of that setting.
+* text=auto eol=lf
+
+*.md text eol=lf
+*.ps1 text eol=lf
+*.yml text eol=lf

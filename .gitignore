@@ -1,0 +1,10 @@
+# Development scratch: the deploy script writes here when run with a temp
+# target, and the probe writes short-lived directories under %TEMP%.
+*.log
+.cordis/
+
+# Editor / OS noise
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
