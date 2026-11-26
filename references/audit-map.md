@@ -15,8 +15,8 @@ Reverse index from `scripts/probe-pwsh-semantics.ps1` check ids to the section t
 | `E5g` | a successful statement after a swallowed error exits 0 | 3 | C-e |
 | `E6` | a guarded native failure returns its own code (git → 128) | 2 (R-e) | C-e |
 | `E7` | a `-File` child propagates only an explicit `exit` | 3 | C-f |
-| `E9` | the tool-observed render width is 120 | 4 | `output-formatting.md` F-where |
-| `E10` | `Out-String` without `-Width` clips at 120 | 4 | F-where |
+| `E9` | the tool host formats at 120 columns — **tool-host check, `SKIP` elsewhere** | 4 | `output-formatting.md` F-where |
+| `E10` | `Out-String` without `-Width` truncates at a fixed width, marked with `…`, and a later `BufferSize` change does not move it | 4 | F-where |
 | `E11` | `Out-String -Width 200` raises the clip to 200 | 4 (F-2) | F-where |
 | `E12` | `-AutoSize` does not change the rendering | 4 (F-2) | F-autosize |
 | `E13` | four properties render as a table | 4 (F-3) | F-default |
@@ -29,8 +29,15 @@ Reverse index from `scripts/probe-pwsh-semantics.ps1` check ids to the section t
 | `E20` | `ConvertTo-Json` defaults to depth 2 and warns | 4 (F-4) | F-json |
 | `E21` | an empty array serializes to nothing at all | 4 (F-4) | F-json |
 | `E22` | `Write-Warning` lands on stdout | 4 (F-4) | F-streams |
-| `E23` | output is plain text with no ANSI escapes | 4 | F-streams |
-| `E24` | native argument passing defaults to `Windows` | 6 | `command-authoring.md` C-j |
+| `E23` | output is plain text with no ANSI escapes — **tool-host check, `SKIP` elsewhere** | 4 | F-streams |
+
+`HostCheck` is the wrapper that turns a `FAIL` into a `SKIP` when `DSH_SHELL` is unset or stdout is a real console: those two checks measure the tool's host, and a terminal legitimately differs. Every other check must pass in any PowerShell 7 host.
+
+One check asserts a fact `SKILL.md` does not state, because it changes no instruction:
+
+| Check | Asserts | Evidence |
+|---|---|---|
+| `E24` | native argument passing defaults to `Windows` | `command-authoring.md` C-j — recorded so a future pass does not re-add "set `Standard`" advice |
 
 ## Not machine-checked
 
@@ -38,7 +45,7 @@ These sections are evidence-backed but asserted by no probe check, because they 
 
 | Area | Section | Evidence |
 |---|---|---|
-| Multi-line error excerpts, comments, continuation, splatting, argument modes | 2 | `command-authoring.md` C-a, C-b, C-c, C-d, C-j |
+| Multi-line error excerpts, comments, continuation, splatting | 2 | `command-authoring.md` C-a, C-b, C-c, C-d |
 | Second truncation layer and spill paths | 5 | `output-formatting.md` F-streams; measured twice in this skill's construction |
 | Timeout promotion, job collection | 6 | `dsh-tool-pwsh` `render.ts` plus a live promotion observed during construction |
 | Sandbox mode semantics, EPERM boundary, escalation-once | 7 | tool contract plus `dsh-sandbox/src/escalation.ts` |

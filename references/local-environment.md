@@ -31,12 +31,15 @@ The `standard` preset mounts `@deepseek-ai/dsh-tool-pwsh`, so `pwsh` exposes `co
 
 | Fact | Value |
 |---|---|
-| Console width | 120 (buffer and window) |
-| `Out-String` default width | 120, and it does **not** follow the console buffer — raising `BufferSize` to 200 left the default rendering at 120 |
+| Console handle | none — `[Console]::WindowWidth` throws `IOException: 句柄无效`, stdout is redirected |
+| `$Host.UI.RawUI` | reports a virtual 120×9001 buffer and a 120×30 window, stable across calls |
+| `Out-String` default width | **120**, from the detached-console fallback; it does not follow `BufferSize` even when a command raises that to 200 |
 | `$PSStyle.OutputRendering` | `PlainText` |
-| `NO_COLOR` | `1` |
+| `NO_COLOR` | `1`, injected by `dsh-pwsh-local`'s `ENV_OVERRIDES` |
 | ANSI escapes in output | none |
 | Line endings | CRLF |
+
+A real console differs on exactly this point: with stdout attached, `Out-String`'s default equals the window width (100, 176, and 200 measured), and it drops back to 120 once that stdout is redirected. The 120 is a property of the tool's detached-console shape, not of PowerShell, which is why the probe reports `SKIP` for its two host checks outside the tool rather than failing them.
 
 ## Managed environment
 

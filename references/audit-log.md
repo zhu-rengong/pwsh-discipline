@@ -1,6 +1,6 @@
 # Audit log
 
-Two audit rounds were run against this skill. Round 1 is the behaviour audit performed by a fresh-context subagent that loaded the skill and exercised it; round 2 is the correction pass that followed. Every finding below is either fixed in place or explicitly closed as not-a-defect, with the evidence that supports the call.
+Three audit rounds were run against this skill. Round 1 is the behaviour audit performed by a fresh-context subagent that loaded the skill and exercised it; round 2 is the correction pass that followed; round 3 is the pass triggered by the probe failing three checks when `deploy.ps1 -Verify` ran in a real terminal instead of the `pwsh` tool. Every finding below is either fixed in place or explicitly closed as not-a-defect, with the evidence that supports the call.
 
 ## Round 1 — findings and disposition
 
@@ -43,8 +43,30 @@ After the corrections, every command shown in `SKILL.md` was executed verbatim t
 
 The probe reports **25 passed, 0 failed, 1 skipped** and exits 0.
 
+## Round 3 — a terminal run of the probe
+
+A `.\deploy.ps1 -Verify` run from a real terminal (the user's own console, 176 columns) reported three failures that a tool run never shows:
+
+| # | Finding | Disposition |
+|---|---|---|
+| N1 | `E9` asserted `$Host.UI.RawUI.BufferSize.Width -eq 120`; in a real console it reports that console's width, so the check failed with `got 176` | **Fixed.** `E9` moved behind a `HostCheck` wrapper: it measures the tool host, and outside it reports `SKIP` with the reason. The rule is unchanged — inside the tool the width is 120. |
+| N2 | `E10` compared against a literal 120, so it failed for the same reason (`got 176` in the user's console output), and its note ("whatever the buffer width is") described something it never asserted | **Fixed.** The check is now host-independent: long content truncates below its own length, ends in `…`, and a later `BufferSize` change does not move the clip. That last clause is what the note always claimed and never tested; it is now measured in `output-formatting.md` F-where. |
+| N3 | `E23` compared `$env:NO_COLOR -eq '1'` and `OutputRendering -eq 'PlainText'`; a terminal has neither, so it failed | **Fixed.** Moved behind `HostCheck` — both values are injected by `dsh-pwsh-local`, so they are host facts, not PowerShell facts. The check also now samples real formatted output for `ESC` instead of trusting the two flags alone. |
+| N4 | `deploy.ps1 -Verify` printed the probe output but its gate only inspected the probe's process exit code, which is always 0 by design — so `-Verify` passed a deploy whose probe reported three failures | **Fixed.** The script now parses the `summary:` line and throws on `0 failed` not being true. Verified by injecting an always-failing check into a copy and watching the deploy abort. |
+| N5 | The failure message the user saw named only the symptom (`got 176`), not that the number describes the host rather than the skill | **Fixed.** `E9` now names the tool host in both its note and its `SKIP` text, and `SKILL.md` §4 says the 120 is the tool's detached-console width. |
+
+Round 3 was measured across three hosts:
+
+| Host | `RawUI` buffer/window | `Out-String` default | `E9` / `E23` |
+|---|---|---|---|
+| DSH `pwsh` tool | 120 / 120, `[Console]::WindowWidth` throws `IOException` | 120 | `PASS` |
+| Real console, 100 / 176 / 200 columns, stdout attached | matches the console | matches the console | `SKIP` |
+| Same console, stdout redirected to a file | 176 (still reports the console) | 120 | `SKIP` |
+
+The last row is the mechanism: when stdout is not a console, PowerShell formats at a fixed width instead of asking the console. The tool always has that shape — `[Console]::WindowWidth` throws there — so it always lands on 120; a terminal the user opened does not, which is why the number cannot be asserted from one.
+
 ## Open items
 
 - The probe writes temporary files under `%TEMP%` and removes them in the same run; if it is killed mid-run a `pwsh-discipline-probe-*` directory can survive. It never writes inside the skill directory.
-- The probe asserts tool-observed facts (the 120-column buffer width, `NO_COLOR`), so a terminal run outside the tool can legitimately differ. Run it through the `pwsh` tool.
+- `E9` and `E23` assert tool-host facts (the 120-column format width, `NO_COLOR`/`PlainText`), so they `SKIP` rather than fail outside the tool. `E10` is host-independent and must pass anywhere. Run the probe through the `pwsh` tool for a full green.
 - Escalation and sandbox behaviour are documented from the composition and the tool contract, not exercised live: this profile runs `danger-full-access` with approvals disabled, so no denial can be produced on demand.

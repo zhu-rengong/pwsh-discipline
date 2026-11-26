@@ -81,7 +81,7 @@ So `[exit code: N]` is the *process* code. When a native program's own code matt
 
 ## 4. Format the output
 
-The renderer is width-limited: **120 columns**, and `Out-String` defaults to that same width regardless of the console's buffer setting. Exceeding it does not shrink earlier columns — **the last column is truncated with `…`**.
+The renderer is width-limited: **120 columns** inside the tool, because its stdout is not a console and PowerShell then formats at a fixed width. `Out-String` inherits that width, and it does not follow `$Host.UI.RawUI.BufferSize` — raising the buffer inside a command leaves the clip where it was. Exceeding the width does not shrink earlier columns — **the last column is truncated with `…`**.
 
 **F-1 — Format once, deliberately.** One shape, formatted once, at the end of the pipeline. Never emit raw objects and let the default formatter choose.
 
@@ -153,4 +153,4 @@ Print the resolved absolute target first (`Resolve-Path -LiteralPath <path>`, or
 
 ## 10. Audit
 
-`scripts/probe-pwsh-semantics.ps1` checks the exit-code and formatting rules — sections 3 and 4 — and prints `PASS`/`FAIL`/`SKIP` per check id. It always exits 0, so a FAIL never masquerades as a failed tool call. Run it through the `pwsh` tool (it asserts tool-observed facts such as the 120-column width, so a terminal run may legitimately differ) after a DSH or PowerShell upgrade. `references/audit-map.md` maps every check id to the section and reference that owns it; fix the rule there, then re-run.
+`scripts/probe-pwsh-semantics.ps1` checks the exit-code and formatting rules — sections 3 and 4 — and prints `PASS`/`FAIL`/`SKIP` per check id. It always exits 0, so a FAIL never masquerades as a failed tool call; `deploy.ps1 -Verify` reads the summary line and is what actually gates a deploy. Run it through the `pwsh` tool after a DSH or PowerShell upgrade. Two checks (`E9`, `E23`) assert tool-host facts — the 120-column format width and the `NO_COLOR`/`PlainText` pair — and report `SKIP` rather than `FAIL` when the probe runs in a real terminal, where both legitimately differ. `references/audit-map.md` maps every check id to the section and reference that owns it; fix the rule there, then re-run.

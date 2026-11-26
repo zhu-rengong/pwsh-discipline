@@ -11,8 +11,9 @@ repository is its source. Layout and the deploy command are in [README.md](READM
   `pwsh` tool or labelled a preference. If you cannot reproduce it, do not state it as fact.
 - **Keep the probe green.** A rule that can be checked belongs in
   `scripts/probe-pwsh-semantics.ps1`; run it before every commit and treat `0 failed` as
-  the gate. Run it through the `pwsh` tool — two checks assert tool-observed facts and can
-  differ in a plain terminal.
+  the gate. Run it through the `pwsh` tool: `E9` and `E23` measure that host, and report
+  `SKIP` — never `FAIL` — anywhere else. `deploy.ps1 -Verify` enforces the same gate on the
+  deployed copy by reading the summary line; the probe's own exit code is always 0.
 - **Respect the context budget.** `SKILL.md` is loaded whole whenever the skill is used,
   so every line is paid on each load. Add a rule only if it changes behaviour; delete one
   that does not.

@@ -2,11 +2,28 @@
 
 Measured through the `pwsh` tool on 2026-11-26, PowerShell 7.7.0, Windows 10.0.19045. Skill section: **4. Format the output**.
 
-## F-where — the render width is 120
+## F-where — the render width is 120 inside the tool
 
-`$Host.UI.RawUI.BufferSize.Width` and `WindowSize.Width` both report **120** even though stdout is redirected, and it is stable across calls.
+Inside the tool the format width is **120**:
 
-`Out-String` uses **120 regardless of that buffer setting**: with `BufferSize` raised to 200 the default rendering stayed at 120. So the width is a property of `Out-String`'s own default, not an inheritance, and widening the console does not move it. Rendering a 300-character value without `-Width` yields a 120-character line ending in `…`.
+| Fact | Value |
+|---|---|
+| `$Host.UI.RawUI.BufferSize.Width` / `WindowSize.Width` | 120, stable across calls |
+| `[Console]::WindowWidth` / `BufferWidth` | throws `IOException: 句柄无效` — no console is attached to the tool process |
+| Default rendering of a 300-character value | 120 characters ending in `…` |
+| Default rendering after `BufferSize` is raised to 200 in the same command | still 120 |
+
+So the width is not inherited from `$Host.UI.RawUI.BufferSize`: changing that value inside a command does not move the clip, in the same call or a later one. `Out-String -Width` is the only lever.
+
+The number is a property of this host, not of PowerShell. In a real console with stdout still attached, the same rotation gives the console's own width:
+
+| Console `mode con cols=` | `RawUI` buffer/window | `Out-String` default |
+|---|---|---|
+| 100 | 100 | 100 |
+| 176 | 176 | 176 |
+| 200 | 200 | 200 |
+
+And once that console's stdout is redirected to a file, the same 176-column console formats at **120** while `RawUI` still reports 176 — a redirected stdout means no console is attached, and PowerShell falls back to a fixed width. That is why `E9` reports `SKIP` outside the tool instead of failing: a terminal has its own width, and only the tool's detached-console shape is fixed at 120.
 
 | `Out-String -Width` | Value length | Rendered line |
 |---|---|---|

@@ -1,6 +1,6 @@
 #Requires -Version 7.0
 <#
-    Re-verifies every rule in ../SKILL.md against the running PowerShell.
+    Re-verifies the machine-checkable rules in ../SKILL.md — sections 3 and 4.
 
     Run it through the DSH `pwsh` tool after upgrading DSH or PowerShell:
 
@@ -8,12 +8,23 @@
 
     One line per check: PASS / FAIL / SKIP. The script always exits 0 so a
     failing check can never be mistaken for a failing tool call.
+
+    Two checks (E9, E23) assert a property of the DSH pwsh tool host itself:
+    its stdout is not a console, so PowerShell formats at 120 columns, and the
+    executor injects NO_COLOR with PlainText rendering. Outside that host they
+    report SKIP, not FAIL: a real terminal formats at its own width and has no
+    DSH environment, which is a legitimate difference, not a defect.
 #>
 
 $ErrorActionPreference = 'Stop'
 $script:passed = 0
 $script:failed = 0
 $script:skipped = 0
+
+# DSH_SHELL marks a process this harness spawned; a non-console stdout is what
+# makes PowerShell fall back to the fixed 120-column format width. A terminal
+# the user opened has neither, and formats at its own width.
+$script:inDshToolHost = ($env:DSH_SHELL -eq '1') -and [Console]::IsOutputRedirected
 $script:tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('pwsh-discipline-probe-' + [guid]::NewGuid().ToString('N'))
 
 function Report {
@@ -33,6 +44,15 @@ function Check {
     } catch {
         Report $Id 'FAIL' ($Note + ' -- ' + $_.Exception.Message)
     }
+}
+
+function HostCheck {
+    param([string]$Id, [scriptblock]$Body, [string]$Note)
+    if (-not $script:inDshToolHost) {
+        Report $Id 'SKIP' ($Note + ' -- a tool-host fact; run this probe through the pwsh tool')
+        return
+    }
+    Check $Id $Body $Note
 }
 
 function Get-ChildExit {
@@ -99,13 +119,31 @@ Check 'E7' {
 
 # ------------------------------------------------------------------ rendering
 
-Check 'E9' { $Host.UI.RawUI.BufferSize.Width -eq 120 } ('console buffer width is 120 (got ' + $Host.UI.RawUI.BufferSize.Width + ')')
+HostCheck 'E9' {
+    $long = [pscustomobject]@{ V = ('x' * 300) }
+    $trimmed = ((& { $long | Format-Table | Out-String }) -split "`n" |
+        Where-Object { $_ -match 'xxx' } | Select-Object -First 1).TrimEnd()
+    $trimmed.Length -eq 120
+} 'the tool host formats at 120 columns, the width every recipe targets'
 
 Check 'E10' {
-    $long = [pscustomobject]@{ V = ('x' * 300) }
-    $line = (& { $long | Format-Table | Out-String }) -split "`n" | Where-Object { $_ -match 'xxx' } | Select-Object -First 1
-    $line.TrimEnd().Length -eq 120
-} 'Out-String without -Width clips at 120 whatever the buffer width is'
+    $long = [pscustomobject]@{ V = ('x' * 2000) }
+    $measure = {
+        ((& { $long | Format-Table | Out-String }) -split "`n" |
+            Where-Object { $_ -match 'xxx' } | Select-Object -First 1).TrimEnd()
+    }
+    $trimmed = & $measure
+    $saved = $Host.UI.RawUI.BufferSize
+    try {
+        # Never shrink: a console rejects a buffer narrower than its own window.
+        $requested = [math]::Max($saved.Width, 200)
+        $Host.UI.RawUI.BufferSize = [System.Management.Automation.Host.Size]::new($requested, $saved.Height)
+        $widened = & $measure
+    } finally {
+        $Host.UI.RawUI.BufferSize = $saved
+    }
+    ($trimmed.Length -lt 2000) -and ($widened.Length -eq $trimmed.Length) -and $trimmed.EndsWith([string][char]0x2026)
+} 'Out-String truncates at a fixed width and ignores a later buffer-width change'
 
 Check 'E11' {
     $long = [pscustomobject]@{ V = ('x' * 300) }
@@ -189,10 +227,14 @@ Check 'E22' {
     $warningOnStdout -and $stderrEmpty
 } 'Write-Warning lands on stdout'
 
-Check 'E23' {
+HostCheck 'E23' {
     $styled = $PSStyle.OutputRendering -eq 'PlainText'
     $noColor = $env:NO_COLOR -eq '1'
-    $styled -and $noColor
+    $sample = Get-ChildItem -LiteralPath ([System.IO.Path]::GetTempPath()) -File -ErrorAction SilentlyContinue |
+        Select-Object -First 5 |
+        Out-String
+    $noEscapes = -not $sample.Contains([string][char]27)
+    $styled -and $noColor -and $noEscapes
 } 'output is plain text with no ANSI escapes'
 
 Check 'E24' { $PSNativeCommandArgumentPassing -eq 'Windows' } ('native argument passing defaults to Windows (got ' + $PSNativeCommandArgumentPassing + ')')

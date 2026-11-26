@@ -115,11 +115,32 @@ if (-not (Test-Path -LiteralPath $probe)) {
 }
 
 Write-Output 'verifying the deployed copy:'
-& $probe
+$probeReport = & $probe
 $probeExit = $LASTEXITCODE
+$probeReport | ForEach-Object { Write-Output $_ }
 if ($probeExit -ne 0) {
     # The probe exits 0 by design; a non-zero code here means it was modified or blocked.
     throw "deployed probe exited $probeExit; it must always exit 0"
+}
+
+# The probe always exits 0 so a FAIL can never masquerade as a failed tool call,
+# which means this script has to read the summary line to enforce the gate.
+$summary = $probeReport | Where-Object { $_ -match '^summary: ' } | Select-Object -Last 1
+if ($null -eq $summary) {
+    throw 'deployed probe printed no summary line; it did not run to completion'
+}
+if ($summary -match '^\s*summary:\s*(\d+) passed,\s*(\d+) failed,\s*(\d+) skipped') {
+    $failed = [int]$Matches[2]
+} else {
+    throw "unrecognised probe summary: $summary"
+}
+if ($failed -ne 0) {
+    Write-Output ''
+    Write-Output 'The probe failed at least one check. E9 and E23 assert tool-host facts (the'
+    Write-Output '120-column format width, NO_COLOR/PlainText); run the probe through the DSH'
+    Write-Output 'pwsh tool before treating such a failure as a defect:'
+    Write-Output ('  & ''' + $probe + '''')
+    throw "deployed probe reported: $summary"
 }
 
 exit 0

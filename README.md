@@ -14,8 +14,8 @@ This directory is the **development source**. It is not the deployment location 
 | `references/local-environment.md` | The only machine-specific file: resolved `pwsh` path, alias set, `DSH_*` variables, locale, encoding, argument-passing default. |
 | `references/audit-map.md` | Reverse index from probe check id to skill section and evidence row. |
 | `references/audit-log.md` | Findings from each audit round, their disposition, and the regression table. |
-| `scripts/probe-pwsh-semantics.ps1` | 25 assertions over the exit-code and formatting rules. Prints `PASS`/`FAIL`/`SKIP` per check and always exits 0. |
-| `deploy.ps1` | Validates the frontmatter and copies the skill into `$DSH_HOME/skills`. `-Verify` runs the deployed probe. |
+| `scripts/probe-pwsh-semantics.ps1` | 25 assertions over the exit-code and formatting rules. Prints `PASS`/`FAIL`/`SKIP` per check and always exits 0; `E9` and `E23` are tool-host checks and `SKIP` in a plain terminal. |
+| `deploy.ps1` | Validates the frontmatter and copies the skill into `$DSH_HOME/skills`. `-Verify` runs the deployed probe and fails the deploy if it reports any failed check. |
 | `AGENTS.md` | Rules for an agent working in this repository: what is non-negotiable, how a rule change moves through the three places it lives. |
 
 ## Develop
@@ -48,10 +48,10 @@ The deploy script validates the frontmatter, copies the tree to `$DSH_HOME/skill
 .\deploy.ps1 -Destination 'C:\Users\you\.dsh\skills\pwsh-discipline' -Verify
 ```
 
-`-Verify` runs the deployed probe, which is the only step that proves the copy is intact and still matches the environment.
+`-Verify` runs the deployed probe, which is the only step that proves the copy is intact and still matches the environment. It gates on the probe's `summary:` line rather than its exit code, because the probe always exits 0 — that is what stops a red probe from deploying green.
 
 ## Constraints
 
-- The probe asserts facts the tool observed (the 120-column buffer width, `NO_COLOR`, the argument-passing default), so run it **through the `pwsh` tool**. A terminal run outside DSH can legitimately differ on those checks; the formatting and exit-code checks still hold.
+- Run the probe **through the `pwsh` tool** for a full green. Two checks (`E9`, `E23`) assert tool-host facts — the 120-column format width and the `NO_COLOR`/`PlainText` pair — and report `SKIP` in a terminal that has its own width and no DSH environment. Every other check, including `E10`, is host-independent.
 - `references/local-environment.md` is machine-specific. Regenerate that one file when the environment changes and leave the others alone.
 - The probes here were recorded against DSH 0.2.2-rc.5 with PowerShell 7.7.0. After a DSH or PowerShell upgrade, re-run the probe before trusting the body.
